@@ -1,0 +1,24 @@
+# bytical-talk default configuration.
+# LLM/embedding credentials come from environment / .env (see .env.example).
+
+brain:
+  # Director: how expressive the performance planning is.
+  director:
+    temperature: 0.2
+
+  # SelfQC thresholds and retry behaviour.
+  qc:
+    min_sharpness: 30.0     # mean Laplacian variance over the mouth ROI
+    min_sync: 3.0           # SyncNet LSE-C style score (when available)
+    max_retries: 1
+
+render:
+  asr: ave                  # ave | hubert (must match how the checkpoint was trained)
+  # Defaults used when no reference video is analyzed by AutoConfig.
+  defaults:
+    smooth: false
+    smooth_min_cutoff: 0.25
+    smooth_beta: 0.02
+    feather: 8
+    match_train: true
+    restore_face: false

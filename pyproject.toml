@@ -1,0 +1,48 @@
+[build-system]
+requires = ["hatchling"]
+build-backend = "hatchling.build"
+
+[project]
+name = "bytical-talk"
+version = "0.1.0"
+description = "A smart-AI talking-head video system: SyncTalk_2D renderer + an LLM/embedding-driven brain (director, auto-config, self-QC)."
+readme = "README.md"
+requires-python = ">=3.10"
+license = { text = "Apache-2.0" }
+authors = [{ name = "Bytical" }]
+keywords = ["lip-sync", "talking-head", "avatar", "llm", "synctalk", "video-generation"]
+
+dependencies = [
+    "numpy>=1.23",
+    "openai>=1.13",
+    "python-dotenv>=1.0",
+    "pyyaml>=6.0",
+]
+
+[project.optional-dependencies]
+# Heavy / GPU-side deps for the renderer + audio + CV analysis.
+render = [
+    "opencv-python-headless>=4.9",
+    "imageio-ffmpeg>=0.4.9",
+    "soundfile",
+    "librosa>=0.10",
+    "transformers==4.38.0",
+    "onnxruntime",
+    "scipy",
+    "tqdm",
+]
+dev = ["pytest>=8", "ruff>=0.4", "mypy>=1.9"]
+
+[project.scripts]
+bytical-talk = "bytical_talk.cli:main"
+
+[tool.hatch.build.targets.wheel]
+packages = ["bytical_talk"]
+
+[tool.ruff]
+line-length = 100
+target-version = "py310"
+
+[tool.ruff.lint]
+select = ["E", "F", "I", "UP", "B"]
+ignore = ["E501"]

@@ -1,0 +1,42 @@
+# --- secrets / env ---
+.env
+*.key
+secrets.json
+
+# --- vendored upstream (fetched via scripts/fetch_upstream.sh; not re-hosted) ---
+upstream/synctalk2d/
+
+# --- data / weights / outputs (never commit large binaries) ---
+data/
+datasets/
+dataset/
+checkpoint/
+checkpoints/
+*.pth
+*.pth.tar
+*.onnx
+*.npy
+*.wav
+*.mp4
+*.avi
+result/
+results/
+train_tmp_img/
+
+# --- python ---
+__pycache__/
+*.py[cod]
+*.egg-info/
+.eggs/
+build/
+dist/
+.venv/
+venv/
+.pytest_cache/
+.mypy_cache/
+.ruff_cache/
+
+# --- os / editor ---
+.DS_Store
+.vscode/
+.idea/
