@@ -22,6 +22,7 @@ This document is the north star. Concrete, already-shipped work lives in the rep
 | Inference quality (One-Euro box smoothing, feather paste, train/infer resize match) | ✅ done, A/B'd |
 | Training upgrades opt-in (VGG-fixed, mouth-weighted L1, PatchGAN, LPIPS) | ✅ code + CPU-validated |
 | **C3 — HuBERT audio encoder** (better voice generalization) | ✅ tested — **rejected** (see finding below) |
+| **C1 — FiLM multi-scale audio injection** | ✅ tested — **mild win**, shipped opt-in `--arch c1` |
 
 ### Finding: HuBERT vs AVE audio encoder (2026-07)
 
@@ -38,7 +39,16 @@ in ~100 epochs on ~30 s of data — a losing trade in this low-data, per-identit
 regime. HuBERT may still help under large-scale multi-identity pretraining (a
 different regime). **AVE stays the default;** the `--asr hubert` path remains as
 opt-in for future multi-identity work.
+### Finding: C1 FiLM multi-scale audio injection (2026-07)
 
+Same protocol (100-epoch, 10 unseen voices, SyncNet LSE-C). C1 adds FiLM audio
+modulation to decoder levels `up1..up4` on top of the AVE encoder, zero-initialized
+so it starts identical to baseline. Result: **8.11 vs 8.03** (+0.08, C1 wins 4/5
+voices; loses gb_m by 0.02), for +2.2% params. A **small, consistent, risk-free
+gain** — the opposite shape from HuBERT. Confirms the principle: *augment the proven
+encoder, don't replace it.* Shipped as opt-in `--arch c1`. It is not a large gain,
+so the next quality levers are finishing (P1.4) and temporal stability (P1.6), not
+more audio fusion.
 ---
 
 ## Pillar 1 — Core quality & sync (the model itself)
@@ -48,9 +58,11 @@ Goal: sharper finishing, better lip-sync, higher clarity, temporally stable.
 - **P1.1 Audio encoder** — ~~HuBERT/Wav2Vec2 (C3)~~ **tested & rejected** (AVE wins,
   see finding above). Keep pretrained **AVE** as default. Revisit HuBERT only with
   multi-identity pretraining.
-- **P1.2 Multi-scale audio injection (FiLM into decoder)** *(C1 — now the top lever)*.
-  Audio fuses only at the 5×5 bottleneck; feed it to `up1..up4` too. Identity-init →
-  safe. Keeps the proven AVE encoder and adds capacity where it's missing.
+- **P1.2 Multi-scale audio injection (FiLM into decoder)** *(C1 — ✅ done, mild win)*.
+  Audio fuses only at the 5×5 bottleneck; C1 also FiLM-modulates `up1..up4`.
+  Identity-init → safe. **Tested:** SyncNet LSE-C **8.11 vs 8.03** baseline (+0.08,
+  wins 4/5 unseen voices), +2.2% params. A small, risk-free gain — shipped as
+  opt-in `--arch c1`. Not a breakthrough; bigger gains likely come from P1.4/P1.6.
 - **P1.3 Audio cross-attention / AdaIN fusion** *(C2)*. Content-adaptive phoneme→mouth
   alignment instead of channel-concat.
 - **P1.4 Adversarial finishing**: PatchGAN (shipped opt-in) → optionally a
@@ -137,15 +149,14 @@ non-consenting people.
 ## Sequencing (research order)
 
 0. ~~**P1.1 HuBERT (C3)**~~ — ✅ done & **rejected** (AVE wins on SyncNet LSE-C).
-1. **P1.2 FiLM (C1)** — now the top lever; best quality/effort architecture change,
-   keeps the proven AVE encoder.
+0b. ~~**P1.2 FiLM (C1)**~~ — ✅ done, **mild win** (+0.08 LSE-C), shipped opt-in.
+1. **P1.4 face-restoration post-pass + P5.4 background swap** — likely the biggest
+   *visible* quality jump now that audio fusion is saturated; high-value, low-risk.
 2. **P2.1 ONNX/TensorRT + P2.2 fp16** — speed, unblocks everything downstream.
-3. **P5.4 Background swap + P1.4 face-restoration post-pass** — high-value, low-risk,
-   user-visible polish.
-4. **P1.6 temporal-consistency loss** — lock in stability (less shimmer).
-5. **P3.1 emotion / P3.2 gesture** — expressiveness.
-6. **P4.x self-learning** — few-shot cloning + auto-quality loops.
-7. **P5.1–P5.3 remaining swaps** — optional creative controls, gated.
+3. **P1.6 temporal-consistency loss** — lock in stability (less shimmer).
+4. **P3.1 emotion / P3.2 gesture** — expressiveness.
+5. **P4.x self-learning** — few-shot cloning + auto-quality loops.
+6. **P5.1–P5.3 remaining swaps** — optional creative controls, gated.
 
 Each item ships as a new file / flag over SyncTalk_2D, CPU-validated then A/B'd on a
 real checkpoint with **SyncNet LSE-C** (any short clip is a valid test fixture),
