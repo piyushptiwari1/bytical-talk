@@ -34,6 +34,7 @@ def render_video(
     asr: str = "ave",
     upstream_dir: str = "upstream/synctalk2d",
     device: str | None = None,
+    restore_model: str = "gfpgan_models/GFPGANv1.4.pth",
 ) -> str:
     """Render a lip-synced video from a trained checkpoint + audio.
 
@@ -97,6 +98,16 @@ def render_video(
     net.load_state_dict(torch.load(checkpoint, map_location=dev))
     net.eval()
 
+    # Optional GFPGAN face-restoration finishing pass (opt-in via cfg.restore_face).
+    restorer = None
+    if getattr(cfg, "restore_face", False):
+        try:
+            from gfpgan import GFPGANer
+            restorer = GFPGANer(model_path=restore_model, upscale=1, arch="clean",
+                                channel_multiplier=2, bg_upsampler=None)
+        except Exception:
+            restorer = None  # missing gfpgan / weight -> silently skip restoration
+
     step, idx = 0, 0
     for i in range(audio_feats.shape[0]):
         if idx > len_img - 1:
@@ -136,6 +147,19 @@ def render_video(
             img[ymin:ymax, xmin:xmax] = feather_paste(region.copy(), crop_ori, 0, 0, cfg.feather)
         else:
             img[ymin:ymax, xmin:xmax] = crop_ori
+        if restorer is not None:
+            # Restore the whole face, blend ONLY the generated mouth region back so
+            # the eyes/identity from the real footage stay untouched.
+            try:
+                _, _, restored = restorer.enhance(img, has_aligned=False,
+                                                  only_center_face=True, paste_back=True)
+                if restored is not None and restored.shape == img.shape:
+                    reg = img[ymin:ymax, xmin:xmax]
+                    img[ymin:ymax, xmin:xmax] = feather_paste(
+                        reg.copy(), restored[ymin:ymax, xmin:xmax], 0, 0,
+                        feather=max(8, cfg.feather))
+            except Exception:
+                pass  # detection miss on a frame -> keep the unrestored frame
         writer.write(img)
     writer.release()
 

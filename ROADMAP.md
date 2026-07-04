@@ -23,6 +23,7 @@ This document is the north star. Concrete, already-shipped work lives in the rep
 | Training upgrades opt-in (VGG-fixed, mouth-weighted L1, PatchGAN, LPIPS) | ✅ code + CPU-validated |
 | **C3 — HuBERT audio encoder** (better voice generalization) | ✅ tested — **rejected** (see finding below) |
 | **C1 — FiLM multi-scale audio injection** | ✅ tested — **mild win**, shipped opt-in `--arch c1` |
+| **P1.4 — GFPGAN face-restoration finishing pass** | ✅ tested — **sharper, sync-neutral**, shipped opt-in `--restore` |
 
 ### Finding: HuBERT vs AVE audio encoder (2026-07)
 
@@ -49,6 +50,18 @@ gain** — the opposite shape from HuBERT. Confirms the principle: *augment the 
 encoder, don't replace it.* Shipped as opt-in `--arch c1`. It is not a large gain,
 so the next quality levers are finishing (P1.4) and temporal stability (P1.6), not
 more audio fusion.
+
+### Finding: P1.4 GFPGAN face-restoration (2026-07)
+
+A GFPGAN v1.4 restoration pass on the generated mouth region (blended back over only
+that bbox, so real eyes/identity stay untouched). Tested on the C1 checkpoint over 3
+unseen voices vs. no-restore: **mouth-region sharpness +~35%** (Laplacian var ~187 →
+~253), while **SyncNet LSE-C stayed flat** (Δ = +0.01 / −0.02 / −0.08 — within noise).
+The restore corrects *texture* (teeth, beard, lip detail), not *shape*, so it doesn't
+hurt sync. Cost: it runs per-frame (face-detect + enhance), so it's much slower than
+the base render — shipped as **opt-in `--restore`** (default off). Install note: pin
+`numpy==1.23.5` and patch `basicsr`'s `functional_tensor` import for torch 2.2 /
+torchvision 0.17.
 ---
 
 ## Pillar 1 — Core quality & sync (the model itself)
@@ -65,10 +78,10 @@ Goal: sharper finishing, better lip-sync, higher clarity, temporally stable.
   opt-in `--arch c1`. Not a breakthrough; bigger gains likely come from P1.4/P1.6.
 - **P1.3 Audio cross-attention / AdaIN fusion** *(C2)*. Content-adaptive phoneme→mouth
   alignment instead of channel-concat.
-- **P1.4 Adversarial finishing**: PatchGAN (shipped opt-in) → optionally a
-  **lightweight temporal discriminator** (3-frame) to remove flicker; consider
-  **GFPGAN/CodeFormer** as an optional face-restoration post-pass for teeth/skin
-  micro-detail (swap-safe, off by default).
+- **P1.4 Adversarial finishing / restoration** — *(✅ GFPGAN restore done)*. A
+  face-restoration post-pass on the mouth region: **+35% sharpness, sync-neutral**,
+  shipped opt-in `--restore`. (PatchGAN training loss also available opt-in.) A
+  lightweight temporal discriminator remains a future option for flicker.
 - **P1.5 Higher resolution / super-resolution**: keep 328 core, add optional
   **Real-ESRGAN** upscaler on the pasted mouth region only (quality vs. time knob).
 - **P1.6 Temporal consistency loss**: penalize frame-to-frame change in static
@@ -150,8 +163,8 @@ non-consenting people.
 
 0. ~~**P1.1 HuBERT (C3)**~~ — ✅ done & **rejected** (AVE wins on SyncNet LSE-C).
 0b. ~~**P1.2 FiLM (C1)**~~ — ✅ done, **mild win** (+0.08 LSE-C), shipped opt-in.
-1. **P1.4 face-restoration post-pass + P5.4 background swap** — likely the biggest
-   *visible* quality jump now that audio fusion is saturated; high-value, low-risk.
+0c. ~~**P1.4 GFPGAN restore**~~ — ✅ done, **+35% sharpness, sync-neutral**, opt-in `--restore`.
+1. **P5.4 background swap** — high-value product feature, low risk; likely next.
 2. **P2.1 ONNX/TensorRT + P2.2 fp16** — speed, unblocks everything downstream.
 3. **P1.6 temporal-consistency loss** — lock in stability (less shimmer).
 4. **P3.1 emotion / P3.2 gesture** — expressiveness.
