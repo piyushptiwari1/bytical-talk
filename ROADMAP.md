@@ -42,14 +42,25 @@ Remaining (diminishing): threaded I/O prefetch (read ~21%), GPU crop/paste (~15%
 ## B — Content-adaptive quality
 
 The brain (bytical_talk.brain) reads the content and produces a per-segment
-**importance / emphasis** map (Director) and analyzes the input video (AutoConfig).
-Quality is then allocated by content rather than uniformly:
+**importance** score (Director) — derived from what it already returns (intensity,
+emphasis, emotion), with **no extra LLM call**. `render/adaptive.py` turns that into
+a per-frame `QualityPlan`, and the fast renderer spends the expensive quality op only
+on the flagged frames.
 
-- High-importance / emphasized segments -> higher-effort rendering.
-- Ordinary / low-energy segments -> standard (cheaper) rendering.
+**Shipped:** `Segment.importance` (0..1), `build_quality_plan(plan, n_frames, budget=)`,
+and a near-free **unsharp detail pass** on the generated mouth for flagged frames
+(`render_video_fast(quality_plan=...)`).
+
+Two lessons baked in:
+- On punchy copy the LLM rates *everything* important, so an absolute threshold marks
+  100% of frames. A **relative `budget`** (enhance only the top X% most-important
+  frames) keeps compute bounded regardless of how generous the LLM is.
+- The detail op is **unsharp** (GaussianBlur + addWeighted), not a per-frame model:
+  measured **+141% mouth sharpness with SyncNet LSE-C flat** (7.09 -> 7.01, noise),
+  and it's essentially free — so it doesn't undo the A speedup (unlike a GFPGAN pass).
 
 This is the "quality smart video generation based on the content provided to speak"
-idea: the same compute budget, concentrated where it matters.
+idea: the same (bounded) budget, concentrated where the message is.
 
 ---
 

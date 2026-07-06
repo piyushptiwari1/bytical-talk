@@ -34,6 +34,22 @@ class Segment:
     pace: str = "normal"
     pause_after_ms: int = 250
 
+    @property
+    def importance(self) -> float:
+        """Content-importance in 0..1, derived from what the Director already
+        produced (no extra LLM call). Drives content-adaptive quality: emphasized,
+        emotionally-charged, or non-neutral lines score higher and get more render
+        effort. Neutral filler scores low."""
+        score = 0.55 * self.intensity
+        score += 0.20 if self.emphasis else 0.0
+        # non-neutral emotions carry more weight; "neutral" stays low
+        score += 0.0 if self.emotion == "neutral" else 0.20
+        # emphatic emotions get a touch more
+        if self.emotion in ("excited", "confident", "serious", "concerned"):
+            score += 0.05
+        return max(0.0, min(1.0, score))
+
+
 
 @dataclass
 class PerformancePlan:

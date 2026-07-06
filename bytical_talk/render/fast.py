@@ -44,9 +44,17 @@ def render_video_fast(
     batch: int = 16,
     fp16: bool = True,
     nvenc: bool = False,
+    quality_plan=None,
+    enhance_amount: float = 0.6,
 ) -> str:
     """Fast batched render. Signature matches render_video plus batch/fp16/nvenc.
-    Output is frame-identical to render_video (validated with SyncNet)."""
+    Output is frame-identical to render_video (validated with SyncNet).
+
+    quality_plan: optional QualityPlan (from bytical_talk.render.adaptive). When
+    given, frames it flags (high content-importance) get a cheap unsharp detail pass
+    on the generated mouth; the rest use the plain fast path. `enhance_amount`
+    controls the unsharp strength.
+    """
     import cv2
     import numpy as np
     import torch
@@ -150,6 +158,12 @@ def render_video_fast(
             co = crop_oris[k]
             co[4:324, 4:324] = preds[k]
             co = cv2.resize(co, (wc, hc), interpolation=cv2.INTER_CUBIC)
+            # Content-adaptive: on high-importance frames, spend a cheap unsharp
+            # detail pass on the generated mouth region only.
+            fidx = b0 + k
+            if quality_plan is not None and fidx < len(quality_plan.enhance) and quality_plan.enhance[fidx]:
+                blur = cv2.GaussianBlur(co, (0, 0), 3)
+                co = cv2.addWeighted(co, 1.0 + enhance_amount, blur, -enhance_amount, 0)
             if cfg.feather > 0:
                 reg = imgs[k][ymin:ymax, xmin:xmax]
                 imgs[k][ymin:ymax, xmin:xmax] = feather_paste(reg.copy(), co, 0, 0, cfg.feather)
