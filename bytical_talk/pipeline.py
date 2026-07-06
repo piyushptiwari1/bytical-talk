@@ -63,10 +63,15 @@ class Pipeline:
         tts: Callable[[str, str], str] | None = None,
         audio_path: str | None = None,
         upstream_dir: str = "upstream/synctalk2d",
+        fast: bool = True,
     ) -> GenerationResult:
         """End-to-end. Provide either `audio_path` (pre-synthesized wav) or a `tts`
-        callable `tts(ssml_or_text, out_wav) -> wav_path`."""
-        from .render.infer import render_video
+        callable `tts(ssml_or_text, out_wav) -> wav_path`. `fast` uses the batched
+        fp16 render path (frame-identical, ~2x at scale)."""
+        if fast:
+            from .render.fast import render_video_fast as render_video
+        else:
+            from .render.infer import render_video
 
         plan = self.direct(script)
 

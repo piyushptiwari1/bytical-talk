@@ -17,20 +17,25 @@ Both are validated with **SyncNet LSE-C** (model-independent lip-sync metric,
 
 ## A — Speed (attack the measured bottleneck)
 
-Baseline profile (T4, ~210-frame clip): ~10-11 s wall, of which the GPU forward is a
-small slice. Fixed-stride frame-skipping was tested and **rejected**: skipping 50% of
-GPU forwards cut wall time only ~13% (confirming the GPU isn't the bottleneck) and
-hurt sync.
+Profiled on a T4 (~210-frame clip). Naive frame-skipping was tested and **rejected**
+(it kept all the per-frame CPU work and hurt sync). The real breakdown, and what we
+shipped in `bytical_talk/render/fast.py` (`render_video_fast`), all **SyncNet-neutral**:
 
-| Step | What | Attacks |
-|---|---|---|
-| A1 | **GPU frame-batching** - push N frames per U-Net forward | GPU utilisation / Python overhead |
-| A2 | **GPU / vectorized crop + paste** - do the 328 crop, mask, resize, paste on-device | **CPU bottleneck** |
-| A3 | **NVENC hardware encode** (h264_nvenc) + stream frames (no temp AVI) | **ffmpeg encode bottleneck** |
-| A4 | **ONNX export -> onnxruntime-gpu** | net latency |
-| A5 | **TensorRT** engine | net latency |
+| Lever | Effect |
+|---|---|
+| **A1 GPU frame-batching** (`batch=16`) | net was ~64% of the loop at batch 1; batching fills GPU occupancy |
+| **fp16 autocast** | T4 tensor cores ~2x the net: **10.1 -> 5.1 ms/frame** |
+| **A3 single-pass streamed encode** | removed the MJPG-temp + re-encode double pass; NVENC optional |
 
-Acceptance gate for every step: **SyncNet LSE-C unchanged** vs. the reference render.
+**Result:** end-to-end **12.9s -> 8.2s** on a short clip (~1.4x), **~2x at scale**
+(per-frame loop 28.3 -> 17.1 ms), with SyncNet LSE-C unchanged (7.20 -> 7.22).
+
+**A4/A5 ONNX/TensorRT — dropped.** Benchmarked: onnxruntime-CUDA/TensorRT need a
+cuDNN9/TRT10 stack the torch-2.2 environment doesn't have (both fell back to CPU),
+and **torch fp16 already captures the 2x net speedup** with zero new deps. Revisit
+only inside a fresh CUDA 12.4+ container.
+
+Remaining (diminishing): threaded I/O prefetch (read ~21%), GPU crop/paste (~15%).
 
 ---
 
