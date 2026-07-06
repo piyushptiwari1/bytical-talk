@@ -2,14 +2,18 @@
 
 Two layers:
   * renderer  — SyncTalk_2D (fetched into upstream/, see scripts/fetch_upstream.sh)
-                plus weight-safe quality modules in bytical_talk.render / .losses / .audio.
-  * brain     — LLM/embedding-driven intelligence in bytical_talk.brain:
-                  Director   (script -> emotion/prosody/SSML)
-                  AutoConfig (video -> optimal render settings)
+                plus a fast GPU-batched render path in bytical_talk.render.
+  * brain     — content-analysis intelligence in bytical_talk.brain:
+                  Director   (script -> per-segment importance / emphasis / prosody)
+                  AutoConfig (video -> render settings)
                   SelfQC     (evaluate output -> retry with better settings)
 
-The brain is what makes this "actual AI" rather than a fixed pipeline: it
-understands the script, adapts to the input video, and critiques its own output.
+Focus:
+  A — speed: the render is CPU-bound (crop/paste + encode), not GPU-bound, so the
+      fast path batches frames on the GPU, does crop/paste on the GPU, and uses
+      hardware (NVENC) encode.
+  B — content-adaptive quality: the brain reads the spoken content and decides
+      where to spend render quality.
 """
 
 __version__ = "0.1.0"

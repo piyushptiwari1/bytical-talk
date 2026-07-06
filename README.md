@@ -45,11 +45,8 @@ The renderer stays weight-safe and swappable; the brain is provider-agnostic
 ```
 
 - **`bytical_talk/brain/`** — `llm.py`, `director.py`, `autoconfig.py`, `qc.py`
-- **`bytical_talk/render/`** — improved inference: One-Euro crop smoothing, feather
-  paste-back, train/inference resize parity
-- **`bytical_talk/audio/`** — HuBERT features (better generalization to TTS voices)
-- **`bytical_talk/losses/`** — opt-in training upgrades (fixed VGG perceptual,
-  mouth-weighted L1, PatchGAN, LPIPS)
+- **`bytical_talk/render/`** — render path: One-Euro crop smoothing, feather
+  paste-back, train/inference resize parity (GPU-batched fast path in progress)
 - **`upstream/synctalk2d/`** — the renderer, fetched by `scripts/fetch_upstream.sh`
   (not re-hosted)
 
@@ -61,7 +58,7 @@ The renderer stays weight-safe and swappable; the brain is provider-agnostic
 git clone https://github.com/piyushptiwari1/bytical-talk.git
 cd bytical-talk
 pip install -e .            # brain only (light: openai, numpy, pyyaml)
-pip install -e ".[render]"  # + renderer/audio/CV deps (torch, cv2, transformers, …)
+pip install -e ".[render]"  # + renderer/CV deps (torch, cv2, librosa, …)
 
 cp .env.example .env        # then fill in your keys
 bash scripts/fetch_upstream.sh   # only needed for rendering
@@ -117,25 +114,25 @@ print(plan.emotion_timeline())   # per-sentence emotion for the renderer
 
 ## Training a presenter (renderer)
 
-Any short, front-facing talking clip works (the Aarav clip and the Docker image in
-the sibling research folder are only test/packaging conveniences — nothing here
-depends on them). Standard SyncTalk_2D flow, then infer with the improvements:
+Any short, front-facing talking clip works. Standard SyncTalk_2D flow (AVE audio):
 
 ```bash
-# preprocess + train (upstream), optionally with our opt-in losses / HuBERT audio
 python upstream/synctalk2d/data_utils/process.py dataset/<name>/<name>.mp4
-python bytical_talk/audio/hubert.py --wav_path dataset/<name>/aud.wav --num_frames <N>   # for --asr hubert
+# then train per the upstream instructions; render with bytical-talk
 ```
 
 ---
 
 ## Roadmap
 
-Five pillars (see `ROADMAP.md`): **quality** (HuBERT ✓, FiLM multi-scale audio,
-attention fusion, temporal loss, super-res), **speed** (ONNX/TensorRT, fp16),
-**expressiveness** (emotion conditioning, gestures, prosody), **self-learning**
-(auto-QC ✓, hard-example mining, few-shot per-presenter adaptation), and optional,
-consent-gated **swaps** (background, face, voice, clothes — all default OFF).
+Two focused directions (see `ROADMAP.md`):
+- **A — Speed:** the render is CPU-bound, not GPU-bound; GPU frame-batching, GPU
+  crop/paste, NVENC encode, ONNX/TensorRT.
+- **B — Content-adaptive quality:** the brain reads the spoken content and allocates
+  render quality where it matters instead of uniformly.
+
+Every change is gated on **SyncNet LSE-C** (`scripts/score_syncnet.py`) so it can't
+regress lip-sync.
 
 ---
 
@@ -143,5 +140,4 @@ consent-gated **swaps** (background, face, voice, clothes — all default OFF).
 
 - Renderer: [ZiqiaoPeng/SyncTalk_2D](https://github.com/ZiqiaoPeng/SyncTalk_2D)
   (based on Ultralight-Digital-Human and SyncTalk) — fetched, not re-hosted.
-- `bytical_talk/` (the brain + improvements) is licensed **Apache-2.0**.
-- Optional swap features must only be used on media you own or have rights to.
+- `bytical_talk/` (the brain + render path) is licensed **Apache-2.0**.

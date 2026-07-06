@@ -1,9 +1,9 @@
 """Renderer integration — run SyncTalk_2D inference with bytical-talk improvements.
 
 This wraps the upstream model (fetched into upstream/synctalk2d/) and adds the
-weight-safe quality improvements: temporal crop-box smoothing, feathered paste-back,
-train/inference resize parity, and the HuBERT audio path — all driven by a
-RenderConfig produced by AutoConfig. It works with any trained checkpoint.
+validated base quality fixes: temporal crop-box smoothing, feathered paste-back,
+and train/inference resize parity, driven by a RenderConfig. Works with any trained
+AVE checkpoint. The GPU-batched fast path lives in bytical_talk.render.fast.
 
 Heavy deps (torch/cv2) are imported lazily; upstream is added to sys.path at call
 time so the package imports fine without the renderer installed.
@@ -31,20 +31,17 @@ def render_video(
     dataset_dir: str,
     out_path: str,
     config: RenderConfig | None = None,
-    asr: str = "ave",
     upstream_dir: str = "upstream/synctalk2d",
     device: str | None = None,
-    restore_model: str = "gfpgan_models/GFPGANv1.4.pth",
 ) -> str:
     """Render a lip-synced video from a trained checkpoint + audio.
 
     name         : identity name (used only for logging)
     audio_path   : driving .wav
-    checkpoint   : path to a trained U-Net .pth
+    checkpoint   : path to a trained U-Net .pth (AVE)
     dataset_dir  : dir with full_body_img/ + landmarks/ for this identity
     out_path     : output .mp4
     config       : RenderConfig (smoothing/feather/match_train); defaults are safe
-    asr          : "ave" | "hubert" (must match how the checkpoint was trained)
     """
     import cv2
     import numpy as np
@@ -61,27 +58,19 @@ def render_video(
     device = device or ("cuda" if torch.cuda.is_available() else "cpu")
     dev = torch.device(device)
 
-    # ---- audio features ----
-    if asr == "hubert":
-        from ..audio.hubert import _load_wav, extract_hubert_50hz, to_perframe_2048
-        wav = _load_wav(audio_path)
-        feat, _, _ = extract_hubert_50hz(wav, dev)
-        outputs = torch.from_numpy(to_perframe_2048(feat))
-        first, last = outputs[:1], outputs[-1:]
-        audio_feats = torch.cat([first, outputs, last], dim=0).numpy()
-    else:
-        enc = AudioEncoder().to(dev).eval()
-        ck = torch.load(os.path.join(upstream_dir, "model/checkpoints/audio_visual_encoder.pth"),
-                        map_location=dev)
-        enc.load_state_dict({f"audio_encoder.{k}": v for k, v in ck.items()})
-        loader = DataLoader(AudDataset(audio_path), batch_size=64, shuffle=False)
-        outs = []
-        for mel in loader:
-            with torch.no_grad():
-                outs.append(enc(mel.to(dev)))
-        outs = torch.cat(outs, dim=0).cpu()
-        first, last = outs[:1], outs[-1:]
-        audio_feats = torch.cat([first.repeat(1, 1), outs, last.repeat(1, 1)], dim=0).numpy()
+    # ---- audio features (AVE encoder) ----
+    enc = AudioEncoder().to(dev).eval()
+    ck = torch.load(os.path.join(upstream_dir, "model/checkpoints/audio_visual_encoder.pth"),
+                    map_location=dev)
+    enc.load_state_dict({f"audio_encoder.{k}": v for k, v in ck.items()})
+    loader = DataLoader(AudDataset(audio_path), batch_size=64, shuffle=False)
+    outs = []
+    for mel in loader:
+        with torch.no_grad():
+            outs.append(enc(mel.to(dev)))
+    outs = torch.cat(outs, dim=0).cpu()
+    first, last = outs[:1], outs[-1:]
+    audio_feats = torch.cat([first.repeat(1, 1), outs, last.repeat(1, 1)], dim=0).numpy()
 
     # ---- frames ----
     img_dir = os.path.join(dataset_dir, "full_body_img/")
@@ -94,19 +83,9 @@ def render_video(
     fwd = cv2.INTER_AREA if cfg.match_train else cv2.INTER_CUBIC
     smoother = BoxSmoother(cfg.smooth_min_cutoff, cfg.smooth_beta) if cfg.smooth else None
 
-    net = Model(6, asr).to(dev)
+    net = Model(6, "ave").to(dev)
     net.load_state_dict(torch.load(checkpoint, map_location=dev))
     net.eval()
-
-    # Optional GFPGAN face-restoration finishing pass (opt-in via cfg.restore_face).
-    restorer = None
-    if getattr(cfg, "restore_face", False):
-        try:
-            from gfpgan import GFPGANer
-            restorer = GFPGANer(model_path=restore_model, upscale=1, arch="clean",
-                                channel_multiplier=2, bg_upsampler=None)
-        except Exception:
-            restorer = None  # missing gfpgan / weight -> silently skip restoration
 
     step, idx = 0, 0
     for i in range(audio_feats.shape[0]):
@@ -134,9 +113,7 @@ def render_video(
         masked_t = torch.from_numpy(masked.transpose(2, 0, 1).astype(np.float32) / 255.0)
         concat = torch.cat([real_t, masked_t], dim=0)[None].to(dev)
 
-        af = get_audio_features(audio_feats, i)
-        af = af.reshape(32, 32, 32) if asr in ("hubert",) else af.reshape(32, 16, 16)
-        af = af[None].to(dev)
+        af = get_audio_features(audio_feats, i).reshape(32, 16, 16)[None].to(dev)
         with torch.no_grad():
             pred = net(concat, af)[0]
         pred = np.array(pred.cpu().numpy().transpose(1, 2, 0) * 255, dtype=np.uint8)
@@ -147,19 +124,6 @@ def render_video(
             img[ymin:ymax, xmin:xmax] = feather_paste(region.copy(), crop_ori, 0, 0, cfg.feather)
         else:
             img[ymin:ymax, xmin:xmax] = crop_ori
-        if restorer is not None:
-            # Restore the whole face, blend ONLY the generated mouth region back so
-            # the eyes/identity from the real footage stay untouched.
-            try:
-                _, _, restored = restorer.enhance(img, has_aligned=False,
-                                                  only_center_face=True, paste_back=True)
-                if restored is not None and restored.shape == img.shape:
-                    reg = img[ymin:ymax, xmin:xmax]
-                    img[ymin:ymax, xmin:xmax] = feather_paste(
-                        reg.copy(), restored[ymin:ymax, xmin:xmax], 0, 0,
-                        feather=max(8, cfg.feather))
-            except Exception:
-                pass  # detection miss on a frame -> keep the unrestored frame
         writer.write(img)
     writer.release()
 

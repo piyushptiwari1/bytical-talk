@@ -49,19 +49,20 @@ The brain is provider-agnostic (Azure OpenAI by default, any OpenAI-compatible
 endpoint via `BYTICAL_LLM_PROVIDER=openai`). Credentials are read from the
 environment — never committed.
 
-## Roadmap (5 pillars)
+## Roadmap
 
-**quality** (HuBERT audio ✓, FiLM multi-scale audio injection, attention fusion,
-temporal-consistency loss, super-res) · **speed** (ONNX/TensorRT, fp16) ·
-**expressiveness** (emotion conditioning, gestures, prosody) · **self-learning**
-(auto-QC ✓, hard-example mining, few-shot per-presenter adaptation) · optional
-**consent-gated swaps** (background, face, voice, clothes — default OFF).
+Two focused directions (see `ROADMAP.md`):
+- **A — Speed:** the render is CPU-bound (crop/paste + encode), not GPU-bound; GPU
+  frame-batching, GPU crop/paste, NVENC encode, ONNX/TensorRT.
+- **B — Content-adaptive quality:** the brain reads the spoken content and allocates
+  render quality where it matters instead of uniformly.
+
+Every change is gated on SyncNet LSE-C so it cannot regress lip-sync.
 
 ## Ethics
 
-Talking-head generation can be misused. Use only on media you own or have rights to;
-the optional face/voice swap features are gated and disabled by default. No
-impersonation of real, non-consenting people.
+Talking-head generation can be misused. Use only on media you own or have rights to.
+No impersonation of real, non-consenting people.
 
 ## Credits
 

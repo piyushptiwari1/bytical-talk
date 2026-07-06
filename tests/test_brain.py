@@ -36,10 +36,10 @@ def test_loads_lenient_handles_fenced_json():
 
 
 def test_autoconfig_recommend_rules():
-    # high motion, small face, low contrast -> smoothing + wide feather + restore
+    # high motion, small face -> smoothing + wide feather
     cfg = recommend(VideoStats(motion=8.0, face_frac=0.04, contrast=20))
     assert cfg.smooth and cfg.smooth_min_cutoff == 0.15
-    assert cfg.feather == 14 and cfg.restore_face
+    assert cfg.feather == 14
     # stable, large, well-lit -> smoothing off
     cfg2 = recommend(VideoStats(motion=1.0, face_frac=0.3, contrast=60))
     assert not cfg2.smooth and cfg2.feather == 8
@@ -51,7 +51,6 @@ def test_qc_rules_flag_low_quality():
                        RenderConfig(smooth=False))
     assert not report.passed
     assert report.suggestion.get("smooth") is True
-    assert report.suggestion.get("restore_face") is True
 
 
 def test_apply_suggestion_returns_new_config():

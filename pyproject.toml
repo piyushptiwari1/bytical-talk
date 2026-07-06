@@ -20,13 +20,12 @@ dependencies = [
 ]
 
 [project.optional-dependencies]
-# Heavy / GPU-side deps for the renderer + audio + CV analysis.
+# Heavy / GPU-side deps for the renderer + CV analysis.
 render = [
     "opencv-python-headless>=4.9",
     "imageio-ffmpeg>=0.4.9",
     "soundfile",
     "librosa>=0.10",
-    "transformers==4.38.0",
     "onnxruntime",
     "scipy",
     "tqdm",

@@ -93,7 +93,7 @@ def _judge_prompt(m: QCMetrics, cfg: RenderConfig) -> list[dict]:
             "Higher sharpness is better. Lower temporal_jitter is smoother. "
             "sync_confidence (if not null) higher is better; below ~3.0 is weak sync. "
             "Suggest changes only among: smooth(bool), smooth_min_cutoff(0.05-1.0), "
-            "feather(0-20), match_train(bool), restore_face(bool)."
+            "feather(0-20), match_train(bool)."
         ),
         "return_schema": {"passed": "bool", "issues": ["..."],
                           "suggestion": {"<config key>": "<value>"},
@@ -123,7 +123,7 @@ class SelfQC:
         data = self.llm.chat_json(_judge_prompt(m, cfg))
         suggestion = data.get("suggestion") or {}
         # keep only known, safe keys
-        allowed = {"smooth", "smooth_min_cutoff", "feather", "match_train", "restore_face"}
+        allowed = {"smooth", "smooth_min_cutoff", "feather", "match_train"}
         suggestion = {k: v for k, v in suggestion.items() if k in allowed}
         return QCReport(
             metrics=m,
@@ -139,7 +139,6 @@ class SelfQC:
         if m.sharpness and m.sharpness < self.min_sharpness:
             passed = False
             issues.append(f"low sharpness {m.sharpness:.1f} < {self.min_sharpness}")
-            suggestion["restore_face"] = True
         if m.temporal_jitter and m.temporal_jitter > 4.0 and not cfg.smooth:
             passed = False
             issues.append(f"high jitter {m.temporal_jitter:.2f} with smoothing off")

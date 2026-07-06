@@ -62,7 +62,6 @@ class Pipeline:
         reference_video: str | None = None,
         tts: Callable[[str, str], str] | None = None,
         audio_path: str | None = None,
-        asr: str = "ave",
         upstream_dir: str = "upstream/synctalk2d",
     ) -> GenerationResult:
         """End-to-end. Provide either `audio_path` (pre-synthesized wav) or a `tts`
@@ -89,7 +88,7 @@ class Pipeline:
             rendered = render_video(
                 name=os.path.basename(dataset_dir), audio_path=audio_path,
                 checkpoint=checkpoint, dataset_dir=dataset_dir, out_path=out_path,
-                config=cfg, asr=asr, upstream_dir=upstream_dir,
+                config=cfg, upstream_dir=upstream_dir,
             )
             report = self.qc.review(measure(rendered), cfg)
             result.qc_reports.append(report)

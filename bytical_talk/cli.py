@@ -70,7 +70,7 @@ def cmd_generate(args) -> int:
     result = Pipeline(max_retries=args.max_retries).generate(
         script=args.script, checkpoint=args.checkpoint, dataset_dir=args.dataset,
         out_path=args.out, reference_video=args.reference, audio_path=args.audio,
-        asr=args.asr, upstream_dir=args.upstream,
+        upstream_dir=args.upstream,
     )
     _print({"output": result.output_path, "attempts": result.attempts,
             "qc_passed": result.qc_passed, "config": result.config.to_dict(),
@@ -103,7 +103,6 @@ def build_parser() -> argparse.ArgumentParser:
     g.add_argument("--out", required=True)
     g.add_argument("--audio", default=None)
     g.add_argument("--reference", default=None)
-    g.add_argument("--asr", default="ave", choices=["ave", "hubert"])
     g.add_argument("--upstream", default="upstream/synctalk2d")
     g.add_argument("--max-retries", dest="max_retries", type=int, default=1)
     g.set_defaults(fn=cmd_generate)

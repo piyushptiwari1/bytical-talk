@@ -36,7 +36,6 @@ class RenderConfig:
     smooth_beta: float = 0.02
     feather: int = 8
     match_train: bool = True
-    restore_face: bool = False    # hook for the optional GFPGAN/CodeFormer pass
     notes: list[str] = field(default_factory=list)
 
     def to_dict(self) -> dict:
@@ -109,22 +108,16 @@ def recommend(stats: VideoStats) -> RenderConfig:
         cfg.smooth = False
         cfg.notes.append(f"low motion ({stats.motion:.1f}) -> smoothing off (already stable)")
 
-    # Face size → feather + super-res hint. Small face => wider feather + restore.
+    # Face size -> feather width. Small face => wider feather to hide the seam.
     if stats.face_frac and stats.face_frac < 0.06:
         cfg.feather = 14
-        cfg.restore_face = True
-        cfg.notes.append(f"small face ({stats.face_frac:.3f}) -> wide feather + restore hint")
+        cfg.notes.append(f"small face ({stats.face_frac:.3f}) -> wide feather")
     elif stats.face_frac and stats.face_frac < 0.15:
         cfg.feather = 10
         cfg.notes.append(f"medium face ({stats.face_frac:.3f}) -> feather 10")
     else:
         cfg.feather = 8
         cfg.notes.append("large/near face -> feather 8")
-
-    # Lighting → restoration hint (low contrast tends to produce mushy mouths).
-    if stats.contrast and stats.contrast < 35:
-        cfg.restore_face = True
-        cfg.notes.append(f"low contrast ({stats.contrast:.0f}) -> restore hint")
 
     return cfg
 

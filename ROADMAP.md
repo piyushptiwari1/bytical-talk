@@ -1,177 +1,61 @@
-# Bytical Avatar — Master Research Roadmap
+# bytical-talk — Roadmap
 
-**Thesis.** Take **SyncTalk_2D** as the base (real-person cloning, fast CPU-bound
-inference, per-identity training) and layer in open-source models, functions, and
-techniques to evolve it into an advanced, controllable, self-improving talking-video
-generator. Everything is additive and behind flags: the validated baseline is never
-regressed, each capability is independently A/B-testable, and "conditional" features
-(swaps) are strictly optional.
+**Thesis.** SyncTalk_2D is the renderer. The value we add is making it *spend compute
+intelligently*, in two directions:
 
-This document is the north star. Concrete, already-shipped work lives in the repo
-(`improvements.py`, `losses_improved.py`, `train_328_improved.py`,
-`inference_328_improved.py`, `data_utils/get_hubert.py`, `PLAN_C_ARCHITECTURE.md`).
+- **A — Speed.** The render is **CPU-bound**, not GPU-bound. Measured on a T4: the
+  U-Net uses ~500 MB VRAM and a fraction of the wall time; the wall time is dominated
+  by per-frame **crop/paste (CPU)** and **ffmpeg encode**. So the speed work targets
+  those, not the GPU.
+- **B — Content-adaptive quality.** Read the spoken content and decide *where* to
+  spend render quality, instead of treating every frame the same.
 
----
-
-## Where we are (baseline, shipped)
-
-| Layer | Status |
-|---|---|
-| SyncTalk_2D packaged in portable Docker (`bytical/synctalk2d:latest`) | ✅ done |
-| 7 safe robustness fixes (sys.executable, subprocess, ckpt-pick, etc.) | ✅ done |
-| Inference quality (One-Euro box smoothing, feather paste, train/infer resize match) | ✅ done, A/B'd |
-| Training upgrades opt-in (VGG-fixed, mouth-weighted L1, PatchGAN, LPIPS) | ✅ code + CPU-validated |
-| **C3 — HuBERT audio encoder** (better voice generalization) | ✅ tested — **rejected** (see finding below) |
-| **C1 — FiLM multi-scale audio injection** | ✅ tested — **mild win**, shipped opt-in `--arch c1` |
-| **P1.4 — GFPGAN face-restoration finishing pass** | ✅ tested — **sharper, sync-neutral**, shipped opt-in `--restore` |
-
-### Finding: HuBERT vs AVE audio encoder (2026-07)
-
-We trained two 100-epoch models on one presenter, identical except the audio
-encoder, and scored 10 renders of **unseen** TTS voices (US/GB/IN, M/F) with the
-gold-standard **SyncNet LSE-C** metric. Result: the stock **AVE encoder won every
-single voice** (mean LSE-C **8.03 vs 4.47**, offset ≈ 0 for both). The hypothesis
-that HuBERT would generalize better to unseen voices was **refuted**.
-
-*Why:* AVE (`audio_visual_encoder.pth`) is **pretrained jointly for this lip-sync
-task** with sync supervision, so its features are already sync-discriminative. HuBERT
-is a generic speech-SSL model whose features the U-Net must learn to map from scratch
-in ~100 epochs on ~30 s of data — a losing trade in this low-data, per-identity
-regime. HuBERT may still help under large-scale multi-identity pretraining (a
-different regime). **AVE stays the default;** the `--asr hubert` path remains as
-opt-in for future multi-identity work.
-### Finding: C1 FiLM multi-scale audio injection (2026-07)
-
-Same protocol (100-epoch, 10 unseen voices, SyncNet LSE-C). C1 adds FiLM audio
-modulation to decoder levels `up1..up4` on top of the AVE encoder, zero-initialized
-so it starts identical to baseline. Result: **8.11 vs 8.03** (+0.08, C1 wins 4/5
-voices; loses gb_m by 0.02), for +2.2% params. A **small, consistent, risk-free
-gain** — the opposite shape from HuBERT. Confirms the principle: *augment the proven
-encoder, don't replace it.* Shipped as opt-in `--arch c1`. It is not a large gain,
-so the next quality levers are finishing (P1.4) and temporal stability (P1.6), not
-more audio fusion.
-
-### Finding: P1.4 GFPGAN face-restoration (2026-07)
-
-A GFPGAN v1.4 restoration pass on the generated mouth region (blended back over only
-that bbox, so real eyes/identity stay untouched). Tested on the C1 checkpoint over 3
-unseen voices vs. no-restore: **mouth-region sharpness +~35%** (Laplacian var ~187 →
-~253), while **SyncNet LSE-C stayed flat** (Δ = +0.01 / −0.02 / −0.08 — within noise).
-The restore corrects *texture* (teeth, beard, lip detail), not *shape*, so it doesn't
-hurt sync. Cost: it runs per-frame (face-detect + enhance), so it's much slower than
-the base render — shipped as **opt-in `--restore`** (default off). Install note: pin
-`numpy==1.23.5` and patch `basicsr`'s `functional_tensor` import for torch 2.2 /
-torchvision 0.17.
----
-
-## Pillar 1 — Core quality & sync (the model itself)
-
-Goal: sharper finishing, better lip-sync, higher clarity, temporally stable.
-
-- **P1.1 Audio encoder** — ~~HuBERT/Wav2Vec2 (C3)~~ **tested & rejected** (AVE wins,
-  see finding above). Keep pretrained **AVE** as default. Revisit HuBERT only with
-  multi-identity pretraining.
-- **P1.2 Multi-scale audio injection (FiLM into decoder)** *(C1 — ✅ done, mild win)*.
-  Audio fuses only at the 5×5 bottleneck; C1 also FiLM-modulates `up1..up4`.
-  Identity-init → safe. **Tested:** SyncNet LSE-C **8.11 vs 8.03** baseline (+0.08,
-  wins 4/5 unseen voices), +2.2% params. A small, risk-free gain — shipped as
-  opt-in `--arch c1`. Not a breakthrough; bigger gains likely come from P1.4/P1.6.
-- **P1.3 Audio cross-attention / AdaIN fusion** *(C2)*. Content-adaptive phoneme→mouth
-  alignment instead of channel-concat.
-- **P1.4 Adversarial finishing / restoration** — *(✅ GFPGAN restore done)*. A
-  face-restoration post-pass on the mouth region: **+35% sharpness, sync-neutral**,
-  shipped opt-in `--restore`. (PatchGAN training loss also available opt-in.) A
-  lightweight temporal discriminator remains a future option for flicker.
-- **P1.5 Higher resolution / super-resolution**: keep 328 core, add optional
-  **Real-ESRGAN** upscaler on the pasted mouth region only (quality vs. time knob).
-- **P1.6 Temporal consistency loss**: penalize frame-to-frame change in static
-  regions during training → less shimmer without hurting mouth motion.
-- **P1.7 Sync supervision / eval**: the stock AVE **SyncNet** already works with the
-  training sync loss. Separately, we now use external **SyncNet LSE-C/LSE-D**
-  (`scripts/score_syncnet.py`) as a model-independent evaluation metric for any A/B.
-
-**Metrics.** LSE-C / LSE-D (SyncNet confidence & distance), FID/LPIPS on mouth crop,
-Laplacian sharpness, temporal-jitter (frame-diff on static ROI), wall-time/frame.
+Both are validated with **SyncNet LSE-C** (model-independent lip-sync metric,
+`scripts/score_syncnet.py`) so nothing ships that hurts sync.
 
 ---
 
-## Pillar 2 — Speed & scale (time / faster)
+## A — Speed (attack the measured bottleneck)
 
-- **P2.1 ONNX / TensorRT export** of the U-Net (repo already has an ONNX `__main__`
-  in `unet_328.py`) → 2–4× inference on the same GPU.
-- **P2.2 Half precision (fp16/bf16)** inference; the model is tiny (~500 MB VRAM) so
-  batch multiple frames per forward.
-- **P2.3 Decouple CPU crop/paste from GPU**: current bottleneck is CPU (7–8 cores/job).
-  Move crop/mask/paste to vectorized/GPU ops or a producer-consumer pipeline.
-- **P2.4 Horizontal scale**: SQS + ASG scale-from-0 (already designed in infra) —
-  train-once-per-presenter, serve many.
+Baseline profile (T4, ~210-frame clip): ~10-11 s wall, of which the GPU forward is a
+small slice. Fixed-stride frame-skipping was tested and **rejected**: skipping 50% of
+GPU forwards cut wall time only ~13% (confirming the GPU isn't the bottleneck) and
+hurt sync.
 
----
+| Step | What | Attacks |
+|---|---|---|
+| A1 | **GPU frame-batching** - push N frames per U-Net forward | GPU utilisation / Python overhead |
+| A2 | **GPU / vectorized crop + paste** - do the 328 crop, mask, resize, paste on-device | **CPU bottleneck** |
+| A3 | **NVENC hardware encode** (h264_nvenc) + stream frames (no temp AVI) | **ffmpeg encode bottleneck** |
+| A4 | **ONNX export -> onnxruntime-gpu** | net latency |
+| A5 | **TensorRT** engine | net latency |
 
-## Pillar 3 — Expressiveness (emotions, gestures, sentences)
-
-- **P3.1 Emotion conditioning**: add an emotion embedding (from text sentiment or an
-  explicit tag) as an extra conditioning vector alongside audio → expressive mouth/brow.
-  Reference: EAT, EMO, PD-FGC.
-- **P3.2 Gesture / head-motion**: SyncTalk_2D keeps the *source* body motion. To add
-  controllable gestures, integrate a pose/gesture driver (e.g. **EchoMimicV2** pose
-  templates already explored, or **DiffGesture/CyberHost**) as an optional pre-stage
-  that regenerates the body track before lip-sync.
-- **P3.3 Sentence/prosody awareness**: use the ASR/LLM layer to drive pacing, emphasis,
-  and pauses in TTS (Polly SSML / other TTS) so lip motion matches meaning, not just
-  phonemes.
-- **P3.4 Blink/gaze**: optional procedural or learned eye motion for long clips.
+Acceptance gate for every step: **SyncNet LSE-C unchanged** vs. the reference render.
 
 ---
 
-## Pillar 4 — Self-learning & self-understanding
+## B — Content-adaptive quality
 
-- **P4.1 Automatic quality scoring**: run LSE-C/LSE-D + face-restoration confidence per
-  render; auto-flag low-quality outputs for re-render with different settings.
-- **P4.2 Active data curation**: from a presenter's renders, mine the frames where sync
-  confidence is lowest and prioritize them in fine-tuning (hard-example mining).
-- **P4.3 Continual per-presenter fine-tuning**: start from a shared base checkpoint and
-  adapt fast to each presenter (LoRA-style light adaptation) instead of full 2 h train.
-- **P4.4 Self-supervised pretraining**: pretrain the U-Net across many identities so a
-  new presenter needs minutes, not hours (moves toward few-shot cloning).
+The brain (bytical_talk.brain) reads the content and produces a per-segment
+**importance / emphasis** map (Director) and analyzes the input video (AutoConfig).
+Quality is then allocated by content rather than uniformly:
 
----
+- High-importance / emphasized segments -> higher-effort rendering.
+- Ordinary / low-energy segments -> standard (cheaper) rendering.
 
-## Pillar 5 — Conditional swaps (OPTIONAL, off by default)
-
-These are opt-in creative controls, isolated so they never affect the default path.
-Each has clear consent/ethics gating (only on content the user owns/has rights to).
-
-- **P5.1 Face swap**: **InsightFace / inswapper** or **SimSwap/FaceFusion** as a
-  post/pre-stage. SyncTalk already crops by landmarks — a face-swap module can run on
-  the source track before cloning. Gated, watermarked, consent-checked.
-- **P5.2 Voice swap / conversion**: **RVC** or **so-vits-svc** to convert a base TTS/
-  narration into a target voice, or **XTTS/OpenVoice** for cloning a provided voice
-  sample. Feeds the same audio pipeline (HuBERT features downstream stay identical).
-- **P5.3 Clothes swap**: virtual try-on (**IDM-VTON / OOTDiffusion**) on the presenter
-  frames before lip-sync. Body region only; face untouched.
-- **P5.4 Background swap**: matting (**RobustVideoMatting / BiRefNet**) → composite new
-  background. Cheap, high-value, low-risk; likely the first swap to ship.
-
-**Guardrails for Pillar 5.** All swaps require explicit user opt-in, operate only on
-rights-owned media, are logged, and default OFF. No identity impersonation of real
-non-consenting people.
+This is the "quality smart video generation based on the content provided to speak"
+idea: the same compute budget, concentrated where it matters.
 
 ---
 
-## Sequencing (research order)
+## Kept base (validated, low-risk)
 
-0. ~~**P1.1 HuBERT (C3)**~~ — ✅ done & **rejected** (AVE wins on SyncNet LSE-C).
-0b. ~~**P1.2 FiLM (C1)**~~ — ✅ done, **mild win** (+0.08 LSE-C), shipped opt-in.
-0c. ~~**P1.4 GFPGAN restore**~~ — ✅ done, **+35% sharpness, sync-neutral**, opt-in `--restore`.
-1. **P5.4 background swap** — high-value product feature, low risk; likely next.
-2. **P2.1 ONNX/TensorRT + P2.2 fp16** — speed, unblocks everything downstream.
-3. **P1.6 temporal-consistency loss** — lock in stability (less shimmer).
-4. **P3.1 emotion / P3.2 gesture** — expressiveness.
-5. **P4.x self-learning** — few-shot cloning + auto-quality loops.
-6. **P5.1–P5.3 remaining swaps** — optional creative controls, gated.
+- **Crop-box temporal smoothing** (One-Euro) - removes landmark jitter; auto-enabled by
+  AutoConfig only when the input actually moves.
+- **Feathered paste-back** - removes the crop seam.
+- **Train/inference resize parity** (INTER_AREA) - fixes a real train/test mismatch.
 
-Each item ships as a new file / flag over SyncTalk_2D, CPU-validated then A/B'd on a
-real checkpoint with **SyncNet LSE-C** (any short clip is a valid test fixture),
-keeping the baseline
-always runnable.
+## Metric
+
+scripts/score_syncnet.py - SyncNet LSE-C (confidence, higher = better) + AV offset.
+Any change is A/B'd against the reference render on a multi-voice set before shipping.
