@@ -52,7 +52,8 @@ def render_video(
     from utils import AudioEncoder, AudDataset, get_audio_features  # type: ignore
     from torch.utils.data import DataLoader
 
-    from .smoothing import BoxSmoother, feather_paste
+    from .smoothing import (BoxSmoother, EMAStabilizer, feather_paste,
+                            feather_paste_ellipse)
 
     cfg = config or RenderConfig()
     device = device or ("cuda" if torch.cuda.is_available() else "cpu")
@@ -82,6 +83,7 @@ def render_video(
     writer = cv2.VideoWriter(tmp, cv2.VideoWriter_fourcc("M", "J", "P", "G"), 25, (w, h))
     fwd = cv2.INTER_AREA if cfg.match_train else cv2.INTER_CUBIC
     smoother = BoxSmoother(cfg.smooth_min_cutoff, cfg.smooth_beta) if cfg.smooth else None
+    stabilizer = EMAStabilizer(cfg.temporal) if cfg.temporal > 0 else None
 
     net = Model(6, "ave").to(dev)
     net.load_state_dict(torch.load(checkpoint, map_location=dev))
@@ -117,10 +119,15 @@ def render_video(
         with torch.no_grad():
             pred = net(concat, af)[0]
         pred = np.array(pred.cpu().numpy().transpose(1, 2, 0) * 255, dtype=np.uint8)
+        if stabilizer is not None:
+            pred = stabilizer(pred)          # temporal EMA -> steady, non-fluid mouth
         crop_ori[4:324, 4:324] = pred
         crop_ori = cv2.resize(crop_ori, (wc, hc), interpolation=cv2.INTER_CUBIC)
-        if cfg.feather > 0:
-            region = img[ymin:ymax, xmin:xmax]
+        region = img[ymin:ymax, xmin:xmax]
+        if cfg.ellipse:
+            img[ymin:ymax, xmin:xmax] = feather_paste_ellipse(
+                region.copy(), crop_ori, 0, 0, softness=cfg.ellipse_soft)
+        elif cfg.feather > 0:
             img[ymin:ymax, xmin:xmax] = feather_paste(region.copy(), crop_ori, 0, 0, cfg.feather)
         else:
             img[ymin:ymax, xmin:xmax] = crop_ori

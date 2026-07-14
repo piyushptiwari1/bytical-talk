@@ -112,3 +112,60 @@ def feather_paste(dst: np.ndarray, patch: np.ndarray, ymin: int, xmin: int,
     blended = a * patch.astype(np.float32) + (1.0 - a) * region
     dst[ymin:ymax, xmin:xmax] = np.clip(blended, 0, 255).astype(np.uint8)
     return dst
+
+
+def _ellipse_mask(h: int, w: int, softness: float = 0.35,
+                  cy: float = 0.66, cx: float = 0.5,
+                  ry: float = 0.42, rx: float = 0.5) -> np.ndarray:
+    """A HxWx1 radial elliptical alpha mask with an adjustable center and radii.
+
+    A rectangular feather still has straight edges that read as a moving square
+    when the crop tracks the mouth. An ellipse biased toward the mouth (cy>0.5,
+    tight ry) blends only the mouth/chin and keeps real pixels for the
+    nose/upper-cheeks, so there is no visible box.
+    """
+    ys = (np.linspace(0.0, 1.0, h).reshape(h, 1) - cy) / max(ry, 1e-3)
+    xs = (np.linspace(0.0, 1.0, w).reshape(1, w) - cx) / max(rx, 1e-3)
+    r = np.sqrt(ys ** 2 + xs ** 2) * 2.0          # ~0 center -> ~1 at radius edge
+    a = np.clip((1.0 - r) / max(softness, 1e-3), 0.0, 1.0)
+    a = a * a * (3 - 2 * a)                        # smoothstep
+    return a[..., None].astype(np.float32)
+
+
+def feather_paste_ellipse(dst: np.ndarray, patch: np.ndarray, ymin: int, xmin: int,
+                          softness: float = 0.5, cy: float = 0.66, cx: float = 0.5,
+                          ry: float = 0.42, rx: float = 0.5) -> np.ndarray:
+    """Like `feather_paste` but with a mouth-biased ELLIPTICAL mask (no square
+    edges / moving box). Modifies and returns `dst`.
+    """
+    h, w = patch.shape[:2]
+    ymax, xmax = ymin + h, xmin + w
+    if ymin < 0 or xmin < 0 or ymax > dst.shape[0] or xmax > dst.shape[1]:
+        dst[ymin:ymax, xmin:xmax] = patch
+        return dst
+    region = dst[ymin:ymax, xmin:xmax].astype(np.float32)
+    a = _ellipse_mask(h, w, softness, cy, cx, ry, rx)
+    blended = a * patch.astype(np.float32) + (1.0 - a) * region
+    dst[ymin:ymax, xmin:xmax] = np.clip(blended, 0, 255).astype(np.uint8)
+    return dst
+
+
+class EMAStabilizer:
+    """Temporal EMA over the generated mouth patch to remove the per-frame
+    'fluid' wobble (each frame is generated independently). `strength` in [0,1);
+    higher = steadier but too high (>0.5) can lag the mouth behind the audio.
+    """
+
+    def __init__(self, strength: float = 0.25):
+        self.strength = float(strength)
+        self._prev: np.ndarray | None = None
+
+    def __call__(self, patch: np.ndarray) -> np.ndarray:
+        if self.strength <= 0.0:
+            return patch
+        cur = patch.astype(np.float32)
+        if self._prev is None:
+            self._prev = cur
+        else:
+            self._prev = self.strength * self._prev + (1.0 - self.strength) * cur
+        return np.clip(self._prev, 0, 255).astype(np.uint8)

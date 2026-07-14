@@ -36,6 +36,12 @@ class RenderConfig:
     smooth_beta: float = 0.02
     feather: int = 8
     match_train: bool = True
+    # temporal EMA over the generated mouth (removes the per-frame "fluid" wobble)
+    temporal: float = 0.25
+    # mouth-biased elliptical paste mask (no square edges / moving box); when True
+    # it supersedes the rectangular `feather` paste
+    ellipse: bool = True
+    ellipse_soft: float = 0.5
     notes: list[str] = field(default_factory=list)
 
     def to_dict(self) -> dict:

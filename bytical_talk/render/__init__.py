@@ -9,11 +9,13 @@ via __getattr__ — the light modules (adaptive, smoothing) import with no heavy
 """
 
 from .adaptive import QualityPlan, build_quality_plan, segment_frame_spans  # noqa: F401
-from .smoothing import BoxSmoother, OneEuroFilter, feather_paste  # noqa: F401
+from .smoothing import (BoxSmoother, EMAStabilizer, OneEuroFilter,  # noqa: F401
+                        feather_paste, feather_paste_ellipse)
 
 __all__ = [
     "QualityPlan", "build_quality_plan", "segment_frame_spans",
-    "BoxSmoother", "OneEuroFilter", "feather_paste",
+    "BoxSmoother", "OneEuroFilter", "EMAStabilizer",
+    "feather_paste", "feather_paste_ellipse",
     "render_video", "render_video_fast",
 ]
 
