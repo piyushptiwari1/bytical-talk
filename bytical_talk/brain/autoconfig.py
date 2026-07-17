@@ -41,7 +41,7 @@ class RenderConfig:
     # mouth-biased elliptical paste mask (no square edges / moving box); when True
     # it supersedes the rectangular `feather` paste
     ellipse: bool = True
-    ellipse_soft: float = 0.5
+    ellipse_soft: float = 0.6
     notes: list[str] = field(default_factory=list)
 
     def to_dict(self) -> dict:

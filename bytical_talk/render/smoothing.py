@@ -115,8 +115,8 @@ def feather_paste(dst: np.ndarray, patch: np.ndarray, ymin: int, xmin: int,
 
 
 def _ellipse_mask(h: int, w: int, softness: float = 0.35,
-                  cy: float = 0.66, cx: float = 0.5,
-                  ry: float = 0.42, rx: float = 0.5) -> np.ndarray:
+                  cy: float = 0.62, cx: float = 0.5,
+                  ry: float = 0.30, rx: float = 0.46) -> np.ndarray:
     """A HxWx1 radial elliptical alpha mask with an adjustable center and radii.
 
     A rectangular feather still has straight edges that read as a moving square
@@ -133,8 +133,8 @@ def _ellipse_mask(h: int, w: int, softness: float = 0.35,
 
 
 def feather_paste_ellipse(dst: np.ndarray, patch: np.ndarray, ymin: int, xmin: int,
-                          softness: float = 0.5, cy: float = 0.66, cx: float = 0.5,
-                          ry: float = 0.42, rx: float = 0.5) -> np.ndarray:
+                          softness: float = 0.6, cy: float = 0.62, cx: float = 0.5,
+                          ry: float = 0.30, rx: float = 0.46) -> np.ndarray:
     """Like `feather_paste` but with a mouth-biased ELLIPTICAL mask (no square
     edges / moving box). Modifies and returns `dst`.
     """
