@@ -124,7 +124,19 @@ def render_video(
         crop_ori[4:324, 4:324] = pred
         crop_ori = cv2.resize(crop_ori, (wc, hc), interpolation=cv2.INTER_CUBIC)
         region = img[ymin:ymax, xmin:xmax]
-        if cfg.ellipse:
+        if cfg.poisson:
+            # Poisson seamless clone: content 100% generated (chin/lips follow the
+            # NEW audio -- no ghosting against the source's own lip motion), boundary
+            # colors harmonized by the Poisson solve (no visible square).
+            m = np.zeros(crop_ori.shape[:2], dtype=np.uint8)
+            iy, ix = max(4, hc // 40), max(4, wc // 40)
+            m[iy:-iy, ix:-ix] = 255
+            center = (xmin + (xmax - xmin) // 2, ymin + (ymax - ymin) // 2)
+            try:
+                img = cv2.seamlessClone(crop_ori, img, m, center, cv2.NORMAL_CLONE)
+            except cv2.error:
+                img[ymin:ymax, xmin:xmax] = crop_ori
+        elif cfg.ellipse:
             img[ymin:ymax, xmin:xmax] = feather_paste_ellipse(
                 region.copy(), crop_ori, 0, 0, softness=cfg.ellipse_soft)
         elif cfg.feather > 0:

@@ -36,11 +36,17 @@ class RenderConfig:
     smooth_beta: float = 0.02
     feather: int = 8
     match_train: bool = True
-    # temporal EMA over the generated mouth (removes the per-frame "fluid" wobble)
-    temporal: float = 0.25
-    # mouth-biased elliptical paste mask (no square edges / moving box); when True
-    # it supersedes the rectangular `feather` paste
-    ellipse: bool = True
+    # Poisson seamless-clone paste — THE validated paste method: content is 100%
+    # generated (chin/lips follow the new audio, no ghosting against the source's
+    # own lip motion), boundary colors harmonized (no visible square).
+    poisson: bool = True
+    # temporal EMA over the generated mouth. DEPRECATED: lags the chin behind head
+    # motion; unnecessary with poisson. Kept for experimentation only.
+    temporal: float = 0.0
+    # elliptical alpha paste. DEPRECATED: the alpha transition zone GHOSTS the real
+    # source lips (moving with the source's own speech) against the generated ones,
+    # which reads as a stuck/delayed chin. Use poisson instead.
+    ellipse: bool = False
     ellipse_soft: float = 0.6
     notes: list[str] = field(default_factory=list)
 

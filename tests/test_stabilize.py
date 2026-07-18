@@ -44,5 +44,5 @@ def test_ellipse_paste_full_frame_ok():
 
 def test_render_config_defaults_enable_fixes():
     cfg = RenderConfig()
-    assert cfg.temporal == 0.25
-    assert cfg.ellipse is True
+    assert cfg.temporal == 0.0
+    assert cfg.poisson is True
