@@ -164,7 +164,18 @@ def render_video_fast(
             if quality_plan is not None and fidx < len(quality_plan.enhance) and quality_plan.enhance[fidx]:
                 blur = cv2.GaussianBlur(co, (0, 0), 3)
                 co = cv2.addWeighted(co, 1.0 + enhance_amount, blur, -enhance_amount, 0)
-            if cfg.feather > 0:
+            if cfg.poisson:
+                # Poisson seamless clone: content 100% generated (no ghosting of
+                # real vs generated lips), boundary harmonized (no visible square).
+                m = np.zeros(co.shape[:2], dtype=np.uint8)
+                iy, ix = max(4, hc // 40), max(4, wc // 40)
+                m[iy:-iy, ix:-ix] = 255
+                center = (xmin + (xmax - xmin) // 2, ymin + (ymax - ymin) // 2)
+                try:
+                    imgs[k] = cv2.seamlessClone(co, imgs[k], m, center, cv2.NORMAL_CLONE)
+                except cv2.error:
+                    imgs[k][ymin:ymax, xmin:xmax] = co
+            elif cfg.feather > 0:
                 reg = imgs[k][ymin:ymax, xmin:xmax]
                 imgs[k][ymin:ymax, xmin:xmax] = feather_paste(reg.copy(), co, 0, 0, cfg.feather)
             else:
